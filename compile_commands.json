@@ -1,0 +1,53 @@
+[
+  {
+    "arguments": [
+      "/usr/lib64/ccache/g++",
+      "-std=c++20",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-Iinclude/",
+      "-c",
+      "-o",
+      "build/main.o",
+      "src/main.cpp"
+    ],
+    "directory": "/home/gabe/Documents/SettingsModules",
+    "file": "/home/gabe/Documents/SettingsModules/src/main.cpp",
+    "output": "/home/gabe/Documents/SettingsModules/build/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/lib64/ccache/g++",
+      "-std=c++20",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-Iinclude/",
+      "-c",
+      "-o",
+      "build/test.o",
+      "src/test.cpp"
+    ],
+    "directory": "/home/gabe/Documents/SettingsModules",
+    "file": "/home/gabe/Documents/SettingsModules/src/test.cpp",
+    "output": "/home/gabe/Documents/SettingsModules/build/test.o"
+  },
+  {
+    "arguments": [
+      "/usr/lib64/ccache/g++",
+      "-std=c++20",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-Iinclude/",
+      "-c",
+      "-o",
+      "build/reset.o",
+      "src/reset.cpp"
+    ],
+    "directory": "/home/gabe/Documents/SettingsModules",
+    "file": "/home/gabe/Documents/SettingsModules/src/reset.cpp",
+    "output": "/home/gabe/Documents/SettingsModules/build/reset.o"
+  }
+]
