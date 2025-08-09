@@ -1,12 +1,15 @@
 #ifndef SQL_WRAPPER_H
 #define SQL_WRAPPER_H
 
-#include <concepts>
+#include <iostream>
+
 #include <cstdint>
 #include <format>
+#include <ostream>
 #include <sqlite3.h>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -14,22 +17,47 @@ using Blob = std::vector<std::uint8_t>;
 using SqlValue = std::variant<std::nullptr_t, long, double, std::string, Blob>;
 
 using NameAndData = std::pair<std::string, SqlValue>;
-using ColNames = std::vector<std::string>;
+
+inline NameAndData makeNameAndData(std::string str, SqlValue value) {
+  return std::make_pair(str, value);
+}
+
+using Column = std::pair<NameAndData, bool>;
+
+inline Column makeColumn(NameAndData nm, bool primaryKey) {
+  return std::make_pair(nm, primaryKey);
+}
+
+using Columns = std::vector<Column>;
+
 using RowOfData = std::vector<NameAndData>;
 using ColOfData = std::pair<std::string, std::vector<SqlValue>>;
+
+inline ColOfData makeColOfData(std::string name, std::vector<SqlValue> values) {
+  return std::make_pair(name, values);
+}
+
 using Table = std::vector<ColOfData>;
 
-using TransposeTable = std::vector<RowOfData>;
-
-inline TransposeTable transposeTable(Table table) { TransposeTable tTabel; }
-
-inline const char *sqlValueToString(const SqlValue value) {
+inline std::string sqlValueToString(SqlValue value) {
   if (std::holds_alternative<long>(value))
     return std::format("{}", std::get<long>(value)).c_str();
   else if (std::holds_alternative<double>(value))
     return std::format("{}", std::get<double>(value)).c_str();
+  else if (std::holds_alternative<std::string>(value))
+    return std::get<std::string>(value);
   else
     return "NULL";
+}
+
+inline std::string sqlCreateString(SqlValue value) {
+  if (std::holds_alternative<long>(value))
+    return "INTEGER";
+  else if (std::holds_alternative<double>(value))
+    return "REAL";
+  else if (std::holds_alternative<std::string>(value))
+    return "TEXT";
+  return "NULL";
 }
 
 template <typename T> inline T getSqlValue(SqlValue value) {
@@ -52,10 +80,7 @@ public:
     sql_err = nullptr;
   }
 
-  ~SQL_Wrapper() {
-    sqlite3_free(sql_err);
-    sqlite3_close_v2(db);
-  }
+  ~SQL_Wrapper() { sqlite3_close_v2(db); }
 
   inline bool tableExists(const char *tableName) {
     // This bool and call back are used to check if the table exists in the db
@@ -80,12 +105,19 @@ public:
     return exists;
   }
 
-  inline void createTable(const char *tableName, ColNames colNames) {
+  inline void createTable(const char *tableName, Columns colNames) {
     std::string sql_str =
         std::format("CREATE TABLE IF NOT EXISTS {}(", tableName);
 
-    for (size_t i = 0; i < colNames.size() - 1; ++i) {
-      sql_str += colNames[i];
+    for (size_t i = 0; i < colNames.size(); ++i) {
+      sql_str += std::format("{} {}", colNames[i].first.first,
+                             sqlCreateString(colNames[i].first.second));
+
+      if (colNames[i].second)
+        sql_str += " PRIMARY KEY";
+      else
+        sql_str += " NOT NULL";
+
       if (i != (colNames.size() - 1))
         sql_str += ",";
     }
@@ -102,7 +134,7 @@ public:
     std::string sql_str = std::format("INSERT INTO {}", tableName);
     std::string dName_str = "(";
     std::string data_str = "VALUES (";
-    for (size_t i = 0; i < data.size() - 1; ++i) {
+    for (size_t i = 0; i < data.size(); ++i) {
       dName_str += data[i].first;
 
       if (std::holds_alternative<long>(data[i].second))
@@ -136,7 +168,7 @@ public:
     std::string sql_str = std::format("INSERT INTO {}", tableName);
     std::string dName_str = "(";
     std::string data_str = "VALUES (";
-    for (size_t i = 0; i < data.size() - 1; ++i) {
+    for (size_t i = 0; i < data.size(); ++i) {
       dName_str += data[i].first;
       data_str += "?";
 
@@ -154,8 +186,8 @@ public:
         SQLITE_OK)
       throw std::runtime_error(db_error_msg("Prepare"));
 
-    for (size_t row = 0; row < row_count - 1; ++row) {
-      for (size_t col = 0; col < col_count - 1; ++col) {
+    for (size_t row = 0; row < row_count; ++row) {
+      for (size_t col = 0; col < col_count; ++col) {
         if (std::holds_alternative<long>(data[col].second[row]))
           sqlite3_bind_int64(stmt, col, std::get<long>(data[col].second[row]));
         else if (std::holds_alternative<double>(data[col].second[row]))
@@ -178,12 +210,12 @@ public:
     execSimpleSQL("COMMIT;");
   }
 
-  Table selectSameTypeFromTable(const char *tableName, ColNames colNames) {
+  Table selectSameTypeFromTable(const char *tableName, Columns colNames) {
     Table selection;
 
     std::string sql_str = "SELECT ";
-    for (size_t i = 0; i < colNames.size() - 1; ++i) {
-      sql_str += colNames[i];
+    for (size_t i = 0; i < colNames.size(); ++i) {
+      sql_str += colNames[i].first.first;
       if (i != colNames.size() - 1)
         sql_str += ", ";
     }
@@ -194,10 +226,8 @@ public:
 
   inline Table selectAllFromTable(const char *tableName) {
     Table selection;
-    sqlite3_stmt *stmt;
 
     std::string sql_str = std::format("SELECT * FROM {};", tableName);
-
     return queryToTable(sql_str.c_str());
   }
 
@@ -213,34 +243,27 @@ private:
     if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK)
       throw std::runtime_error(db_error_msg("Prepare"));
 
-    bool done = false;
+    for (int i = 0; i < sqlite3_column_count(stmt); ++i)
+      selection.push_back(
+          makeColOfData(sqlite3_column_name(stmt, i), std::vector<SqlValue>()));
 
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-      for (int i = 0; i < sqlite3_column_count(stmt) - 1; ++i) {
-        if (!done)
-          selection[i].first = sqlite3_column_name(stmt, i);
-
-        switch (sqlite3_column_type(stmt, i)) {
-        case SQLITE_INTEGER:
+    do {
+      for (int i = 0; i < sqlite3_column_count(stmt); ++i) {
+        std::string dtp = sqlite3_column_decltype(stmt, i);
+        std::cout << dtp << std::endl;
+        if (dtp == "INTEGER")
           selection[i].second.push_back(sqlite3_column_int(stmt, i));
-          break;
-
-        case SQLITE_FLOAT:
+        else if (dtp == "REAL")
           selection[i].second.push_back(sqlite3_column_double(stmt, i));
-          break;
-
-        case SQLITE_TEXT:
-          selection[i].second.push_back(std::string(
-              reinterpret_cast<const char *>(sqlite3_column_text(stmt, i))));
-          break;
-
-        case SQLITE_NULL:
-        default:
-          throw std::runtime_error("Unexpected dType");
-        }
+        else if (dtp == "TEXT") {
+          const unsigned char *txt = sqlite3_column_text(stmt, i);
+          selection[i].second.push_back(
+              txt ? reinterpret_cast<const char *>(txt) : "");
+        } else if (dtp == "NULL") {
+        } else
+          throw std::runtime_error(std::format("Unexpected dT, {}", dtp));
       }
-      done = true;
-    }
+    } while (sqlite3_step(stmt) == SQLITE_ROW);
 
     sqlite3_finalize(stmt);
     return selection;

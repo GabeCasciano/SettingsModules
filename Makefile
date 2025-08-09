@@ -12,15 +12,15 @@ LDLIBS := -pthread -lsqlite3
 
 # Files
 SRC := src/main.cpp
-TEST_SRC := src/test.cpp 
+TEST_SRC := src/test_sql.cpp 
 RST_SRC := src/reset.cpp 
 
 OBJ := build/main.o 
-TEST_OBJ := build/test.o 
+TEST_OBJ := build/test_sql.o 
 RST_OBJ := build/reset.o
 
 OUT := build/main
-TEST_OUT := build/test
+TEST_OUT := build/test_sql
 RST_OUT := build/reset
 
 .PHONY: all clean bear

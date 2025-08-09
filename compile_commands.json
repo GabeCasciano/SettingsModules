@@ -26,12 +26,12 @@
       "-Iinclude/",
       "-c",
       "-o",
-      "build/test.o",
-      "src/test.cpp"
+      "build/test_sql.o",
+      "src/test_sql.cpp"
     ],
     "directory": "/home/gabe/Documents/SettingsModules",
-    "file": "/home/gabe/Documents/SettingsModules/src/test.cpp",
-    "output": "/home/gabe/Documents/SettingsModules/build/test.o"
+    "file": "/home/gabe/Documents/SettingsModules/src/test_sql.cpp",
+    "output": "/home/gabe/Documents/SettingsModules/build/test_sql.o"
   },
   {
     "arguments": [
