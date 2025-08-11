@@ -51,7 +51,7 @@ struct Row_t {
   }
   Row_t() = default;
   ~Row_t() {
-    if (columns != nullptr)
+    if (!columns)
       free(columns);
   }
 };
@@ -74,7 +74,7 @@ struct ColumnOfData {
   }
 
   ~ColumnOfData() {
-    if (values != nullptr)
+    if (!values)
       free(values);
   }
 };
@@ -83,10 +83,37 @@ struct Table {
   short colCount;
   long rowCount = 0;
   long rowCap = 0;
-  const char *names[MAX_COLUMN_NAME_LENGTH];
+  char **names;
   SqlValue **values;
 
-  Table(short colCount) : colCount(colCount) {}
+  Table(short colCount)
+      : colCount(colCount), names((char **)malloc(sizeof(char) * colCount *
+                                                  MAX_COLUMN_NAME_LENGTH)) {}
+  Table(short colCount, char **names)
+      : colCount(colCount), names((char **)malloc(sizeof(char) * colCount *
+                                                  MAX_COLUMN_NAME_LENGTH)) {
+    for (int i = 0; i < colCount; ++i)
+      safeNameCopy((char *)&this->names[i], names[i]);
+  }
+  Table(Row_t row)
+      : colCount(row.colCount), names((char **)malloc(sizeof(char) * colCount *
+                                                      MAX_COLUMN_NAME_LENGTH)) {
+    for (int i = 0; i < colCount; ++i)
+      safeNameCopy((char *)&this->names[i], row.columns[i].name);
+  }
+  Table() = default;
+  ~Table() {
+    if (!names)
+      free(names);
+    if (!values)
+      free(values);
+  }
+
+  void setColName(const char *name, short colNum) {
+    if (colNum < colCount)
+      safeNameCopy(names[colNum], name);
+  }
+
   void appendRow(SqlValue *values) {
     if (rowCount >= rowCap) {
       rowCap = (rowCap) ? rowCap * 2 : 1;
@@ -97,7 +124,6 @@ struct Table {
       this->values = tmp;
     }
     memcpy((void *)this->values[rowCount], values, colCount * sizeof(SqlValue));
-
     rowCount++;
   }
 };
@@ -213,7 +239,7 @@ public:
   }
 
   Table selectFromTable(const char *tableName, Row_t colNames) {
-    Table selection;
+    Table table(colNames);
 
     std::string sql_str = "SELECT ";
     for (short i = 0; i < colNames.colCount; ++i)
@@ -224,7 +250,7 @@ public:
   }
 
   inline Table selectAllFromTable(const char *tableName) {
-    Table selection;
+    Table table;
 
     std::string sql_str = std::format("SELECT * FROM {};", tableName);
     return queryToTable(sql_str.c_str());
@@ -241,34 +267,26 @@ private:
 
   inline Table queryToTable(const char *query) {
     Table selection;
+    SqlValue *rowOfData;
     sqlite3_stmt *stmt;
 
     if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK)
       throw std::runtime_error(db_error_msg("Prepare"));
 
-    for (int i = 0; i < sqlite3_column_count(stmt); ++i)
-      selection.push_back(
-          makeColOfData(sqlite3_column_name(stmt, i), std::vector<SqlValue>()));
+    selection = Table(sqlite3_column_count(stmt));
+    rowOfData = new SqlValue[selection.colCount];
+
+    for (int i = 0; i < selection.colCount; ++i)
+      selection.setColName(sqlite3_column_name(stmt, i), i);
 
     do {
-      for (int i = 0; i < sqlite3_column_count(stmt); ++i) {
-        std::string dtp = sqlite3_column_decltype(stmt, i);
-        std::cout << dtp << std::endl;
-        if (dtp == "INTEGER")
-          selection[i].second.push_back(sqlite3_column_int(stmt, i));
-        else if (dtp == "REAL")
-          selection[i].second.push_back(sqlite3_column_double(stmt, i));
-        else if (dtp == "TEXT") {
-          const unsigned char *txt = sqlite3_column_text(stmt, i);
-          selection[i].second.push_back(
-              txt ? reinterpret_cast<const char *>(txt) : "");
-        } else if (dtp == "NULL") {
-        } else
-          throw std::runtime_error(std::format("Unexpected dT, {}", dtp));
-      }
+      for (int i = 0; i < selection.colCount; ++i)
+        rowOfData[i].from_column(stmt, i);
+      selection.appendRow(rowOfData);
     } while (sqlite3_step(stmt) == SQLITE_ROW);
 
     sqlite3_finalize(stmt);
+    free(rowOfData);
     return selection;
   }
 
