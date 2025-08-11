@@ -1,70 +1,88 @@
 #ifndef SQL_WRAPPER_H
 #define SQL_WRAPPER_H
 
-#include <iostream>
-
+#include "SQL_Value.h"
+#include <asm-generic/errno.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#ifndef ARDUINO
 #include <cstdint>
 #include <format>
+#include <iostream>
 #include <ostream>
-#include <sqlite3.h>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
+#endif
+#include <sqlite3.h>
 
-using Blob = std::vector<std::uint8_t>;
-using SqlValue = std::variant<std::nullptr_t, long, double, std::string, Blob>;
+#define MAX_COLUMN_NAME_LENGTH (32)
 
-using NameAndData = std::pair<std::string, SqlValue>;
-
-inline NameAndData makeNameAndData(std::string str, SqlValue value) {
-  return std::make_pair(str, value);
-}
-
-using Column = std::pair<NameAndData, bool>;
-
-inline Column makeColumn(NameAndData nm, bool primaryKey) {
-  return std::make_pair(nm, primaryKey);
-}
-
-using Columns = std::vector<Column>;
-
-using RowOfData = std::vector<NameAndData>;
-using ColOfData = std::pair<std::string, std::vector<SqlValue>>;
-
-inline ColOfData makeColOfData(std::string name, std::vector<SqlValue> values) {
-  return std::make_pair(name, values);
-}
-
-using Table = std::vector<ColOfData>;
-
-inline std::string sqlValueToString(SqlValue value) {
-  if (std::holds_alternative<long>(value))
-    return std::format("{}", std::get<long>(value)).c_str();
-  else if (std::holds_alternative<double>(value))
-    return std::format("{}", std::get<double>(value)).c_str();
-  else if (std::holds_alternative<std::string>(value))
-    return std::get<std::string>(value);
+void safeNameCopy(char *dest, const char *src) {
+  if (strlen(src) < MAX_COLUMN_NAME_LENGTH)
+    strcpy(dest, src);
   else
-    return "NULL";
+    memcpy(dest, src, MAX_COLUMN_NAME_LENGTH);
 }
 
-inline std::string sqlCreateString(SqlValue value) {
-  if (std::holds_alternative<long>(value))
-    return "INTEGER";
-  else if (std::holds_alternative<double>(value))
-    return "REAL";
-  else if (std::holds_alternative<std::string>(value))
-    return "TEXT";
-  return "NULL";
-}
+struct Column_t {
+  char name[MAX_COLUMN_NAME_LENGTH];
+  SqlValue value;
+  bool primaryKey = false;
+  Column_t(const char *name, SqlValue value, bool primaryKey)
+      : value(value), primaryKey(primaryKey) {
+    safeNameCopy((char *)&this->name, name);
+  }
+  Column_t() = default;
+};
 
-template <typename T> inline T getSqlValue(SqlValue value) {
-  if (std::holds_alternative<T>(value))
-    return std::get<T>(value);
-  return nullptr;
-}
+struct Row_t {
+  short colCount;
+  Column_t *columns;
+  Row_t(short colCount) : colCount(colCount) {
+    columns = new Column_t[colCount];
+  }
+  Row_t(Column_t *columns, short colCount) : colCount(colCount) {
+    this->columns = new Column_t[colCount];
+    memcpy((void *)this->columns, columns, sizeof(Column_t) * colCount);
+  }
+  Row_t() = default;
+  ~Row_t() {
+    if (columns != nullptr)
+      free(columns);
+  }
+};
+
+struct ColumnOfData {
+  long rowCount;
+  char name[MAX_COLUMN_NAME_LENGTH];
+  SqlValue *values;
+
+  ColumnOfData(const char *name, long rowCount) : rowCount(rowCount) {
+    safeNameCopy((char *)&this->name, name);
+    values = new SqlValue[rowCount];
+  }
+
+  ColumnOfData(const char *name, SqlValue *values, long rowCount)
+      : rowCount(rowCount) {
+    safeNameCopy((char *)&this->name, name);
+    this->values = new SqlValue[rowCount];
+    memcpy((void *)this->values, values, sizeof(SqlValue) * rowCount);
+  }
+
+  ~ColumnOfData() {
+    if (values != nullptr)
+      free(values);
+  }
+};
+
+struct TableOfData {
+  short colCount;
+  ColumnOfData *columns;
+};
 
 class SQL_Wrapper {
 
@@ -105,20 +123,17 @@ public:
     return exists;
   }
 
-  inline void createTable(const char *tableName, Columns colNames) {
+  inline void createTable(const char *tableName, Row_t rowOfNames) {
     std::string sql_str =
         std::format("CREATE TABLE IF NOT EXISTS {}(", tableName);
 
-    for (size_t i = 0; i < colNames.size(); ++i) {
-      sql_str += std::format("{} {}", colNames[i].first.first,
-                             sqlCreateString(colNames[i].first.second));
+    for (short i = 0; i < rowOfNames.colCount; ++i) {
+      sql_str += std::format("{} {} {}", rowOfNames.columns[i].name,
+                             rowOfNames.columns[i].value.typeString(),
+                             (rowOfNames.columns[i].primaryKey) ? "PRIMARY KEY"
+                                                                : "NOT NULL");
 
-      if (colNames[i].second)
-        sql_str += " PRIMARY KEY";
-      else
-        sql_str += " NOT NULL";
-
-      if (i != (colNames.size() - 1))
+      if (i != (rowOfNames.colCount - 1))
         sql_str += ",";
     }
     sql_str += ");";
