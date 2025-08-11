@@ -1,0 +1,3 @@
+[submodule "include/SQLiteWrapper"]
+	path = include/SQLiteWrapper
+	url = git@github.com:GabeCasciano/SQLiteWrapper.git
