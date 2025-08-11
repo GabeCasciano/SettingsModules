@@ -79,9 +79,27 @@ struct ColumnOfData {
   }
 };
 
-struct TableOfData {
+struct Table {
   short colCount;
-  ColumnOfData *columns;
+  long rowCount = 0;
+  long rowCap = 0;
+  const char *names[MAX_COLUMN_NAME_LENGTH];
+  SqlValue **values;
+
+  Table(short colCount) : colCount(colCount) {}
+  void appendRow(SqlValue *values) {
+    if (rowCount >= rowCap) {
+      rowCap = (rowCap) ? rowCap * 2 : 1;
+      SqlValue **tmp = (SqlValue **)realloc(
+          (void *)values, sizeof(SqlValue) * rowCap * colCount);
+      if (!tmp)
+        throw std::runtime_error("realloc");
+      this->values = tmp;
+    }
+    memcpy((void *)this->values[rowCount], values, colCount * sizeof(SqlValue));
+
+    rowCount++;
+  }
 };
 
 class SQL_Wrapper {
@@ -128,16 +146,12 @@ public:
         std::format("CREATE TABLE IF NOT EXISTS {}(", tableName);
 
     for (short i = 0; i < rowOfNames.colCount; ++i) {
-      sql_str += std::format("{} {} {}", rowOfNames.columns[i].name,
+      sql_str += std::format("{} {} {}{}", rowOfNames.columns[i].name,
                              rowOfNames.columns[i].value.typeString(),
                              (rowOfNames.columns[i].primaryKey) ? "PRIMARY KEY"
-                                                                : "NOT NULL");
-
-      if (i != (rowOfNames.colCount - 1))
-        sql_str += ",";
+                                                                : "NOT NULL",
+                             (i != (rowOfNames.colCount - 1)) ? "," : ");");
     }
-    sql_str += ");";
-
     execSimpleSQL(sql_str.c_str());
   }
 
@@ -145,55 +159,42 @@ public:
     execSimpleSQL(std::format("DROP TABLE IF EXISTS {};", tableName).c_str());
   }
 
-  inline void insertInto(const char *tableName, RowOfData data) {
+  inline void insertInto(const char *tableName, Row_t data) {
     std::string sql_str = std::format("INSERT INTO {}", tableName);
     std::string dName_str = "(";
     std::string data_str = "VALUES (";
-    for (size_t i = 0; i < data.size(); ++i) {
-      dName_str += data[i].first;
+    for (short i = 0; i < data.colCount; ++i) {
+      char *str;
+      bool last = i != (data.colCount - 1);
 
-      if (std::holds_alternative<long>(data[i].second))
-        data_str += std::format("{}", std::get<long>(data[i].second));
-      else if (std::holds_alternative<double>(data[i].second))
-        data_str += std::format("{}", std::get<double>(data[i].second));
-      else if (std::holds_alternative<std::string>(data[i].second))
-        data_str = std::format("'{}'", std::get<std::string>(data[i].second));
+      insert(dName_str, data.columns[i].name, last);
+      insert(data_str, data.columns[i].value.toString(str), last);
 
-      if (i != (data.size() - 1)) {
-        dName_str += ", ";
-        data_str += ", ";
-      }
+      free(str);
     }
-    dName_str += ")";
-    data_str += ")";
 
     sql_str = std::format("{} {} {};", sql_str, dName_str, data_str);
     execSimpleSQL(sql_str.c_str());
   }
 
-  inline void insertManySameTypeInto(const char *tableName, Table data) {
+  inline void insertManySameTypeInto(const char *tableName, Row_t *data,
+                                     long rowCount) {
 
     execSimpleSQL("BEGIN TRANSACTION;");
 
-    size_t col_count = data.size();
-    size_t row_count = data[0].second.size();
+    short colCount = data[0].colCount;
 
     sqlite3_stmt *stmt;
 
     std::string sql_str = std::format("INSERT INTO {}", tableName);
     std::string dName_str = "(";
     std::string data_str = "VALUES (";
-    for (size_t i = 0; i < data.size(); ++i) {
-      dName_str += data[i].first;
-      data_str += "?";
-
-      if (i != (data.size() - 1)) {
-        dName_str += ", ";
-        data_str += ", ";
-      }
+    for (long i = 0; i < colCount; ++i) {
+      char *str;
+      bool last = i != (colCount - 1);
+      insert(dName_str, data->columns[i].name, last);
+      insert(data_str, data->columns[i].value.toString(str), last);
     }
-    dName_str += ")";
-    data_str += ")";
 
     sql_str = std::format("{} {} {};", sql_str, dName_str, data_str);
 
@@ -201,39 +202,22 @@ public:
         SQLITE_OK)
       throw std::runtime_error(db_error_msg("Prepare"));
 
-    for (size_t row = 0; row < row_count; ++row) {
-      for (size_t col = 0; col < col_count; ++col) {
-        if (std::holds_alternative<long>(data[col].second[row]))
-          sqlite3_bind_int64(stmt, col, std::get<long>(data[col].second[row]));
-        else if (std::holds_alternative<double>(data[col].second[row]))
-          sqlite3_bind_double(stmt, col,
-                              std::get<double>(data[col].second[row]));
-        else if (std::holds_alternative<std::string>(data[col].second[row])) {
-          std::string str = std::get<std::string>(data[col].second[row]);
-          sqlite3_bind_text(stmt, col, str.c_str(), str.length(), nullptr);
-        }
-      }
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+      throw std::runtime_error(db_error_msg("Step"));
 
-      if (sqlite3_step(stmt) != SQLITE_DONE)
-        throw std::runtime_error(db_error_msg("Step"));
-
-      sqlite3_reset(stmt);
-    }
+    sqlite3_reset(stmt);
 
     sqlite3_finalize(stmt);
 
     execSimpleSQL("COMMIT;");
   }
 
-  Table selectSameTypeFromTable(const char *tableName, Columns colNames) {
+  Table selectFromTable(const char *tableName, Row_t colNames) {
     Table selection;
 
     std::string sql_str = "SELECT ";
-    for (size_t i = 0; i < colNames.size(); ++i) {
-      sql_str += colNames[i].first.first;
-      if (i != colNames.size() - 1)
-        sql_str += ", ";
-    }
+    for (short i = 0; i < colNames.colCount; ++i)
+      insert(sql_str, colNames.columns[i].name, (i != (colNames.colCount - 1)));
 
     sql_str = std::format("{} FROM {};", sql_str, tableName);
     return queryToTable(sql_str.c_str());
@@ -250,6 +234,10 @@ private:
   sqlite3 *db;
   std::string filename;
   char *sql_err;
+
+  inline void insert(std::string &dest, const char *str, bool last) {
+    dest += std::format("{}{}", str, (!last) ? ", " : ")");
+  }
 
   inline Table queryToTable(const char *query) {
     Table selection;

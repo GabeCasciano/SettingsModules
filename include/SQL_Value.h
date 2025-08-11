@@ -69,6 +69,28 @@ struct SqlValue {
     }
   }
 
+  char *toString(char *str) const {
+    str = new char[32];
+    switch (kind) {
+    case Type::Null:
+      sprintf(str, "NULL");
+      break;
+    case Type::Integer:
+      sprintf(str, "%ld", st.i);
+      break;
+    case Type::Real:
+      sprintf(str, "%f", st.r); // print 6 decimals
+      break;
+    case Type::Text:
+    case Type::Blob:
+      free(str);
+      str = new char[size];
+      strcpy(str, st.s);
+      break;
+    }
+    return str;
+  }
+
   // Accessors (assert on wrong type for simplicity)
   int64_t as_int() const {
     assert(kind == Type::Integer);
