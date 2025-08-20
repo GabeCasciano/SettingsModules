@@ -1,14 +1,19 @@
 #ifndef SETTING_H_
 #define SETTING_H_
 
-#include <SQL_Wrapper.h>
+#include "SQLiteWrapper/include/SQL_Value.h"
+#include <sqlite3.h>
+
+#ifndef ARDUNIO
+#include <cstring>
 #include <exception>
 #include <format>
-#include <sqlite3.h>
 #include <stdexcept>
-#include <string>
 #include <variant>
 #include <vector>
+#else 
+#include <Arduino>
+#endif
 
 inline const char *GET_ALL_STR = "SELECT name, value, dType FROM settings;";
 
@@ -21,16 +26,12 @@ struct Setting {
   Setting() = default;
   ~Setting() = default;
 
-  std::string toString() const {
-    return std::format("Setting (name: {}, value:{})", name,
-                       sqlValueToString(value));
+  const char *toString() {
+    str = std::format("Setting (name: {}, value:{})", name, value.toString());
+    return str.c_str();
   }
 
-  std::vector<std::pair<std::string, SqlValue>> toDataObj() const {
-    std::vector<std::pair<std::string, SqlValue>> sql;
-    sql.push_back(std::make_pair("name", name));
-    sql.push_back(std::make_pair("value", value));
-    return sql;
-  }
+private:
+  std::string str;
 };
 #endif
