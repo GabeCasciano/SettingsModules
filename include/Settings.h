@@ -1,23 +1,26 @@
 #ifndef SETTINGS_H_
 #define SETTINGS_H_
 
-#include "SQL_Wrapper.h"
+#include "SQLiteWrapper/include/SQL_Wrapper.h"
 #include "Setting.h"
-#include <sqlite3.h>
-#include <stdexcept>
 #include <string>
-#include <variant>
-#include <vector>
 
-const char *TABLE_NAME = "settings";
-const char *DEFAULT_DB = "settings.db";
+static const char *TABLE_NAME = "settings";
+static const char *DEFAULT_DB = "settings.db";
 
-using Settings_t = std::vector<Setting>;
+struct Settings_t {
+  uint32_t count;
+  Setting *settings;
+
+  Settings_t(uint32_t count) : count(count) {
+    settings = (Setting *)malloc(sizeof(Setting) * count);
+  }
+};
 
 inline SqlValue getValueBySettingName(Settings_t settings, std::string name) {
-  for (auto s : settings) {
-    if (s.name == name)
-      return s.value;
+  for (uint32_t i = 0; i < settings.count; ++i) {
+    if (settings.settings[i].name == name)
+      return settings.settings[i].value;
   }
   return nullptr;
 }
@@ -37,22 +40,17 @@ class Settings {
     // Create setting
     Setting _setting(name, value);
 
-    // Add to db
-    sql->insertInto(TABLE_NAME, _setting.toDataObj());
+    sql->insertInto(TABLE_NAME, _setting.toRow());
   }
 
   inline Settings_t getSettingsFromDb() {
-
-    Settings_t settings;
-
     Table table = sql->selectAllFromTable(TABLE_NAME);
+    Settings_t _settings = Settings_t(table.rowCount);
 
-    for (size_t nSet = 0; nSet < table[0].second.size() - 1; ++nSet) {
-      Setting _setting(std::get<std::string>(table[0].second[nSet]),
-                       table[1].second[nSet]);
-      settings.push_back(std::move(_setting));
-    }
-    return settings;
+    for(uint32_t i = 0 ; i < _settings.count; ++i)
+      _settings.settings[i] = Setting::fromRow(table.getRow(i));
+
+    return _settings;
   }
 
 private:
