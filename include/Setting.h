@@ -3,15 +3,15 @@
 
 #include "SQLiteWrapper/include/SQL_Datatypes.h"
 #include "SQLiteWrapper/include/SQL_Value.h"
+#include <nlohmann/json_fwd.hpp>
 #include <sqlite3.h>
 
 #ifndef ARDUNIO
 #include <format>
+#include <nlohmann/json.hpp>
 #else
 #include <Arduino>
 #endif
-
-inline const char *GET_ALL_STR = "SELECT name, value, dType FROM settings;";
 
 struct Setting {
   std::string name;
@@ -29,10 +29,18 @@ struct Setting {
 
   Row_t toRow() {
     Row_t r(3);
-    r.columns[0] = Column_t("name", name.c_str(), true);
-    r.columns[1] = Column_t("value", value.toString(), false);
-    r.columns[2] = Column_t("dType", value.type(), false);
+    r.values[0] = name.c_str();
+    r.values[1] = value;
+    r.values[2] = value.type();
     return r;
+  }
+
+  nlohmann::json toJson() {
+    nlohmann::json j;
+    j["name"] = name;
+    j["value"] = value.toString();
+    j["dType"] = value.type();
+    return j;
   }
 
   static Setting fromRow(Row_t r) {
@@ -40,21 +48,21 @@ struct Setting {
       return Setting();
 
     SqlValue v;
-    switch (r.columns[2].value.as_int()) {
+    switch (r.values[3].as_int()) {
     case SqlValue::Type::Null:
       v = nullptr;
       break;
     case SqlValue::Type::Integer:
-      v = r.columns[1].value.as_int();
+      v = r.values[1].as_int();
       break;
     case SqlValue::Type::Real:
-      v = r.columns[1].value.as_real();
+      v = r.values[1].as_real();
       break;
     case SqlValue::Type::Text:
-      v = r.columns[1].value.as_text();
+      v = r.values[1].as_text();
       break;
     }
-    return Setting(r.columns[0].value.as_text(), v);
+    return Setting(r.values[0].as_text(), v);
   }
 
 private:
