@@ -4,6 +4,8 @@
 #include "SQLiteWrapper/include/SQL_Datatypes.h"
 #include "SQLiteWrapper/include/SQL_Wrapper.h"
 #include "Setting.h"
+#include <cinttypes>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 
 static const char *TABLE_NAME = "settings";
@@ -15,8 +17,59 @@ struct Settings_t {
 
   Settings_t() = default;
   Settings_t(unsigned long count) : count(count) {
-    settings = new Setting[count];
+    settings = new Setting_t[count];
   }
+  ~Settings_t() { destroy(); }
+  // copy
+  Settings_t(const Settings_t &other) : count(other.count) { copy_from(other); }
+  // copy assignment
+  Settings_t &operator=(const Settings_t &other) {
+    if (this != &other) {
+      copy_from(other);
+    }
+    return *this;
+  }
+  // move
+  Settings_t(Settings_t &&other) noexcept { move_from(std::move(other)); }
+  // move assignment
+  Settings_t &operator=(Settings_t &&other) {
+    if (this != &other) {
+      move_from(std::move(other));
+    }
+    return *this;
+  }
+
+  Matrix_t toMatrix(){
+    Matrix_t _m = Matrix_t(3, count);
+
+    return _m;
+  }
+
+  static Settings_t fromMatric(Matrix_t m){
+    Settings_t _s = Settings_t(m.rowCount);
+
+    return _s;
+  }
+
+  nlohmann::json toJson(){
+    nlohmann::json j;
+
+    return j;
+  }
+
+  static Settings_t fromJson(nlohmann::json j){
+    Settings_t _s = Settings_t(j.size());
+
+
+    return _s;
+  }
+
+private:
+  void destroy() {}
+
+  void copy_from(const Settings_t &o) {}
+
+  void move_from(Settings_t &&o) noexcept {}
 };
 
 inline SqlValue getValueBySettingName(Settings_t settings, std::string name) {
@@ -50,7 +103,7 @@ class Settings {
     Settings_t _settings = Settings_t(matrix.rowCount);
 
     for (uint32_t i = 0; i < _settings.count; ++i)
-      _settings.settings[i] = Setting::fromRow(matrix.getRow(i));
+      _settings.settings[i] = Setting_t::fromRow(matrix.getRow(i));
 
     return _settings;
   }
