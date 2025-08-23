@@ -10,11 +10,12 @@ static const char *TABLE_NAME = "settings";
 static const char *DEFAULT_DB = "settings.db";
 
 struct Settings_t {
-  uint32_t count;
-  Setting *settings;
+  unsigned long count;
+  Setting_t *settings;
 
-  Settings_t(uint32_t count) : count(count) {
-    settings = (Setting *)malloc(sizeof(Setting) * count);
+  Settings_t() = default;
+  Settings_t(unsigned long count) : count(count) {
+    settings = new Setting[count];
   }
 };
 
@@ -39,7 +40,7 @@ class Settings {
    */
   inline void addUpdateSetting(std::string name, SqlValue value) {
     // Create setting
-    Setting _setting(name, value);
+    Setting_t _setting(name, value);
 
     sql->insertInto(Matrix_t(name.c_str(), 3), _setting.toRow());
   }
@@ -48,7 +49,7 @@ class Settings {
     Matrix_t matrix = sql->selectFromTable(TABLE_NAME);
     Settings_t _settings = Settings_t(matrix.rowCount);
 
-    for(uint32_t i = 0 ; i < _settings.count; ++i)
+    for (uint32_t i = 0; i < _settings.count; ++i)
       _settings.settings[i] = Setting::fromRow(matrix.getRow(i));
 
     return _settings;
