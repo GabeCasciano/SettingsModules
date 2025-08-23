@@ -1,6 +1,7 @@
 #ifndef SETTINGS_H_
 #define SETTINGS_H_
 
+#include "SQLiteWrapper/include/SQL_Datatypes.h"
 #include "SQLiteWrapper/include/SQL_Wrapper.h"
 #include "Setting.h"
 #include <string>
@@ -27,7 +28,7 @@ inline SqlValue getValueBySettingName(Settings_t settings, std::string name) {
 
 class Settings {
 
-  Settings() { sql = new SQL_Wrapper(DEFAULT_DB); }
+  Settings() { sql = new SQL_DB(DEFAULT_DB); }
   ~Settings() { free(sql); }
 
   /** @function addSetting
@@ -40,21 +41,21 @@ class Settings {
     // Create setting
     Setting _setting(name, value);
 
-    sql->insertInto(TABLE_NAME, _setting.toRow());
+    sql->insertInto(Matrix_t(name.c_str(), 3), _setting.toRow());
   }
 
   inline Settings_t getSettingsFromDb() {
-    Table table = sql->selectAllFromTable(TABLE_NAME);
-    Settings_t _settings = Settings_t(table.rowCount);
+    Matrix_t matrix = sql->selectFromTable(TABLE_NAME);
+    Settings_t _settings = Settings_t(matrix.rowCount);
 
     for(uint32_t i = 0 ; i < _settings.count; ++i)
-      _settings.settings[i] = Setting::fromRow(table.getRow(i));
+      _settings.settings[i] = Setting::fromRow(matrix.getRow(i));
 
     return _settings;
   }
 
 private:
-  SQL_Wrapper *sql;
+  SQL_DB *sql;
 };
 
 #endif
