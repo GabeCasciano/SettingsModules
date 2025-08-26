@@ -3,13 +3,12 @@
 
 #include "SQLiteWrapper/include/SQL_Datatypes.h"
 #include "SQLiteWrapper/include/SQL_Value.h"
-#include <algorithm>
-#include <nlohmann/json_fwd.hpp>
 #include <sqlite3.h>
 
 #ifndef ARDUNIO
 #include <format>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #else
 #include <Arduino>
 #endif
